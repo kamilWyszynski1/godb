@@ -15,4 +15,4 @@
 # vendor/
 
 .idea
-db.godb
+*.godb

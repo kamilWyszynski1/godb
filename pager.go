@@ -30,7 +30,6 @@ func (p *Pager) getRow(pageNum uint32) (*Row, error) {
 		if err := UnmarshalRow(read, &r); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal row, %w", err)
 		}
-
 		p.pages[pageNum] = &r
 		return &r, nil
 	}

@@ -36,6 +36,7 @@ const (
 )
 
 type node struct {
+	Parent   *node
 	IsRoot   bool
 	NodeType NodeType
 	Cells    map[uint32]*Row

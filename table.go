@@ -7,8 +7,9 @@ import (
 const TableMaxRows = 1024
 
 type Table struct {
-	Pager   *Pager
-	NumRows uint32
+	Pager       *Pager
+	NumRows     uint32
+	rootPageNum uint32
 }
 
 func OpenDB(filename string) (*Table, error) {

@@ -12,6 +12,7 @@ type Pager struct {
 	f          *os.File
 	fileLength uint32
 	pages      [TableMaxRows]*Row
+	numPages   uint32
 }
 
 func (p *Pager) getRow(pageNum uint32) (*Row, error) {

@@ -5,6 +5,9 @@ type Cursor struct {
 	rowNum uint32
 	// Indicates a position one past the last element
 	endOfTable bool
+
+	pageNum uint32 // node in btree
+	cellNum uint32 // value in node
 }
 
 // NewCursor creates new Cursor
@@ -20,6 +23,8 @@ func NewCursor(table *Table, endFlag bool) *Cursor {
 	} else {
 		c.rowNum = 0
 		c.endOfTable = table.NumRows == 0
+		c.pageNum = table.rootPageNum
+		c.cellNum = 0
 	}
 	return c
 }

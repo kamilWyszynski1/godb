@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const commandChar = '.'
@@ -33,9 +35,12 @@ func main() {
 
 			switch status {
 			case godb.SuccessfulExit:
-				os.Exit(0)
+				if err := t.Close(); err != nil {
+					log.Errorf("failed to close table, %s", err)
+				}
+				return
 			case godb.UnrecognizedCommand:
-				fmt.Println("unrecognized command")
+				log.Errorln("unrecognized command")
 				continue
 			}
 		}
@@ -43,14 +48,16 @@ func main() {
 		statement := godb.PrepareStatement(text)
 
 		if statement.Status == godb.PrepareUnrecognizedStatement {
-			fmt.Println("unrecognized statement")
+			log.Errorln("unrecognized command")
 		} else if statement.Status == godb.PrepareSuccess {
 			switch statement.Type {
 			case godb.StatementSelect, godb.StatementInsert:
-				godb.ExecuteStatement(statement, t)
+				if err := godb.ExecuteStatement(statement, t); err != nil {
+					log.Errorf("failed to execute statement, %s", err)
+				}
 			}
 		} else if statement.Status == godb.PrepareSyntaxError {
-			fmt.Println("Syntax error. Could not parse statement.")
+			log.Errorln("Syntax error. Could not parse statement.")
 
 		}
 	}

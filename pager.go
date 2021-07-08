@@ -6,6 +6,8 @@ import (
 	"os"
 )
 
+const PageSize = 4096
+
 type Pager struct {
 	f          *os.File
 	fileLength uint32
@@ -36,7 +38,10 @@ func (p *Pager) getRow(pageNum uint32) (*Row, error) {
 }
 
 func (p *Pager) Close(pagesNum uint32) error {
-	for i := uint32(0); i < pagesNum; i++ {
+	logger.
+		WithField("method", "Close").
+		Infof("closing pager, from: %d to: %d\n", p.fileLength/RowSize(), pagesNum)
+	for i := p.fileLength / RowSize(); i < pagesNum; i++ {
 		page := p.pages[i]
 		data, err := page.Marshal()
 		if err != nil {

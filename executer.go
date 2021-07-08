@@ -16,17 +16,20 @@ func ExecuteStatement(s *Statement, t *Table) error {
 		if t.NumRows >= TableMaxRows {
 			return ErrExecuteTableFull
 		}
-		t.Pager.pages[t.NumRows] = s.RowToInsert
+		cur := NewCursor(t, true)
+		cur.setValue(s.RowToInsert)
 		t.NumRows++
 
 		return nil
 	case StatementSelect:
-		for i := uint32(0); i < t.NumRows; i++ {
-			row, err := t.Pager.getRow(i)
+		cur := NewCursor(t, false)
+		for !cur.endOfTable {
+			r, err := cur.getValue()
 			if err != nil {
-				return fmt.Errorf("failed to getRow(%d), %w", i, err)
+				return fmt.Errorf("failed to get row, %w", err)
 			}
-			fmt.Println(row)
+			fmt.Println(r)
+			cur.advance()
 		}
 	}
 	return nil

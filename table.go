@@ -14,10 +14,14 @@ type Row struct {
 }
 
 func (r Row) String() string {
-	return fmt.Sprintf("(%d %s %s)\n", r.ID, string(r.Username[:]), string(r.Email[:]))
+	return fmt.Sprintf("(%d %s %s)", r.ID, string(r.Username[:]), string(r.Email[:]))
 }
 
-func MarshalRow(r Row) ([]byte, error) {
+func RowSize() uint32 {
+	return 4 + 32 + 256
+}
+
+func (r *Row) Marshal() ([]byte, error) {
 	b := make([]byte, 4)
 
 	binary.LittleEndian.PutUint32(b, r.ID)
@@ -75,8 +79,12 @@ func OpenDB(filename string) (*Table, error) {
 		Pager: &Pager{
 			f:          file,
 			fileLength: uint32(fs.Size()),
-			pages:      nil,
+			pages:      [TableMaxRows]*Row{},
 		},
 		NumRows: 0,
 	}, nil
+}
+
+func (t *Table) Close() error {
+	return t.Pager.Close(t.NumRows)
 }

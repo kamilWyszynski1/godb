@@ -1,29 +1,33 @@
 package godb
 
-import "fmt"
-
-type ExecuteResult uint8
-
-const (
-	ExecuteSuccess ExecuteResult = iota + 1
-	ExecuteTableFull
-	ExecuteUnknown
+import (
+	"errors"
+	"fmt"
 )
 
-func ExecuteStatement(s *Statement, t *Table) ExecuteResult {
+var (
+	ErrExecuteTableFull = errors.New("table is full")
+	ErrExecuteUnknown   = errors.New("unknown statement")
+)
+
+func ExecuteStatement(s *Statement, t *Table) error {
 	switch s.Type {
 	case StatementInsert:
 		if t.NumRows >= TableMaxRows {
-			return ExecuteTableFull
+			return ErrExecuteTableFull
 		}
-		t.Pager.pages = append(t.Pager.pages, s.RowToInsert)
+		t.Pager.pages[t.NumRows] = s.RowToInsert
 		t.NumRows++
 
-		return ExecuteSuccess
+		return nil
 	case StatementSelect:
-		for _, r := range t.Pager.pages {
-			fmt.Print(r)
+		for i := uint32(0); i < t.NumRows; i++ {
+			row, err := t.Pager.getRow(i)
+			if err != nil {
+				return fmt.Errorf("failed to getRow(%d), %w", i, err)
+			}
+			fmt.Println(row)
 		}
 	}
-	return ExecuteUnknown
+	return nil
 }

@@ -29,17 +29,51 @@ func prepRow(id uint32) *Row {
 	}
 }
 
+func prepRowWithValues(id uint32, u, e string) *Row {
+	var username [32]byte
+	copy(username[:], u)
+
+	var email [256]byte
+	copy(email[:], e)
+	return &Row{
+		ID:       id,
+		Username: username,
+		Email:    email,
+	}
+}
+
 func TestMarshalRow(t *testing.T) {
-	r := prepRow(4294967295)
+	r := prepRow(123)
 
 	data, err := r.Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println(r)
 	var r1 Row
 	if err := UnmarshalRow(data, &r1); err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println(r1)
+}
+
+func TestMarshalRowEmpty(t *testing.T) {
+	var username [32]byte
+	copy(username[:], "name")
+	r := Row{
+		Username: username,
+	}
+
+	data, err := r.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(r)
+	var r1 Row
+	if err := UnmarshalRow(data, &r1); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(r1)
 }
 
 func TestWholeFlow(t *testing.T) {

@@ -21,23 +21,24 @@ func RowSize() uint32 {
 }
 
 func (r *Row) Marshal() ([]byte, error) {
-	b := make([]byte, 4)
+	b := make([]byte, RowSize())
 
 	binary.LittleEndian.PutUint32(b, r.ID)
-	for _, by := range r.Username {
-		b = append(b, by)
+	for i, by := range r.Username {
+		b[4+i] = by
 	}
-	for _, by := range r.Email {
-		b = append(b, by)
+	for i, by := range r.Email {
+		b[36+i] = by
 	}
 	return b, nil
 }
 
 func UnmarshalRow(data []byte, r *Row) error {
-
-	a := data[:unsafe.Sizeof(r.ID)]
-	b := data[unsafe.Sizeof(r.ID) : unsafe.Sizeof(r.Username)+4]
-	c := data[unsafe.Sizeof(r.Username)+4:]
+	idSize := unsafe.Sizeof(r.ID)
+	usernameSize := unsafe.Sizeof(r.Username)
+	a := data[:idSize]
+	b := data[idSize : idSize+usernameSize]
+	c := data[idSize+usernameSize:]
 
 	r.ID = binary.LittleEndian.Uint32(a)
 

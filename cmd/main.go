@@ -67,10 +67,11 @@ func main() {
 // program if it receives an interrupt from the OS. We then handle this by calling
 // our clean up procedure and exiting the program.
 func SetupCloseHandler() {
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-c
+		log.Infof("received interrupt, exiting")
 		os.Exit(0)
 	}()
 }

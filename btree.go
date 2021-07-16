@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"unsafe"
 )
 
@@ -59,9 +61,96 @@ const (
 	maxChildren = maxCellsCount + 1
 )
 
+type tree struct {
+	cache map[int]node
+	file  *os.File
+}
+
+// GetNode reads node from file if there's no present in cache
+func (t tree) GetNode(id int) (node, error) {
+	if n, ok := t.cache[id]; ok {
+		return n, nil
+	}
+	_, err := t.file.Seek(int64(id*NodeSizeInt()), io.SeekStart)
+	if err != nil {
+		return node{}, err
+	}
+
+	b := make([]byte, NodeSize())
+	_, err = t.file.Read(b)
+	if err != nil {
+		return node{}, err
+	}
+
+	n := NewNode()
+	if err := UnmarshalNode(b, &n); err != nil {
+		return node{}, err
+	}
+	return n, nil
+}
+
+// Print prints whole tree
+func (t tree) Print(id int) error {
+	node, err := t.GetNode(id)
+	if err != nil {
+		return err
+	}
+	fmt.Println(node)
+	if !node.hasChildren() {
+		return nil
+	}
+	for _, ch := range node.Children {
+		if ch != -1 && ch != 0 {
+			if err := t.Print(ch); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Flush writes whole tree into file starting from root
+func (t tree) Flush(id int) error {
+	node, err := t.GetNode(id)
+	if err != nil {
+		return err
+	}
+	if err := t.flushNode(id, node); err != nil {
+		return err
+	}
+	if !node.hasChildren() {
+		return nil
+	}
+	for _, ch := range node.Children {
+		if ch != 0 {
+			if err := t.Flush(ch); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (t tree) flushNode(id int, n node) error {
+	_, err := t.file.Seek(int64(id*NodeSizeInt()), io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	b, err := n.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = t.file.Write(b)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 type node struct {
 	// Children contains 'pointers' to specific node in bytesystem
-	Children [maxChildren]uint64
+	Children [maxChildren]int
 	IsRoot   bool
 	NodeType NodeType
 	// Cells contains Rows that node stores
@@ -70,7 +159,7 @@ type node struct {
 
 func NewNode() node {
 	n := node{
-		Children: [maxChildren]uint64{},
+		Children: [maxChildren]int{},
 		IsRoot:   false,
 		NodeType: 0,
 		Cells:    make(map[uint8]*Row, maxCellsCount),
@@ -87,13 +176,18 @@ func NodeSize() uint32 {
 	return maxChildren*8 + 2 + 1 + maxCellsCount*RowSize()
 }
 
+// NodeSizeInt returns byte size of node
+func NodeSizeInt() int {
+	return int(maxChildren*8 + 2 + 1 + maxCellsCount*RowSize())
+}
+
 // Marshal takes node object and parses it to slice of bytes
 func (n *node) Marshal() ([]byte, error) {
 	b := make([]byte, NodeSize())
 
 	// marshal children ids
-	for i := uint32(0); i < maxCellsCount; i++ {
-		binary.LittleEndian.PutUint64(b[uint64Size*(i):uint64Size*(i+1)], n.Children[i])
+	for i := uint32(0); i < maxChildren; i++ {
+		binary.LittleEndian.PutUint64(b[uint64Size*(i):uint64Size*(i+1)], uint64(n.Children[i]))
 	}
 	currentOffset := uint64Size * 5 // size of children
 	binary.LittleEndian.PutUint16(b[currentOffset:], uint16(n.NodeType))
@@ -140,7 +234,7 @@ func UnmarshalNode(data []byte, n *node) error {
 		n.Cells[uint8(i-1)] = &r
 	}
 	for i := uint32(0); i < maxChildren-1; i++ {
-		n.Children[i] = binary.LittleEndian.Uint64(ch[uint64Size*i : uint64Size*(i+1)])
+		n.Children[i] = int(binary.LittleEndian.Uint64(ch[uint64Size*i : uint64Size*(i+1)]))
 	}
 
 	switch binary.LittleEndian.Uint16(nt) {
@@ -158,4 +252,13 @@ func UnmarshalNode(data []byte, n *node) error {
 func (n node) String() string {
 	return fmt.Sprintf("Children: %v, IsRoot: %v, NodeType: %s, Cells: %v",
 		n.Children, n.IsRoot, n.NodeType, n.Cells)
+}
+
+func (n node) hasChildren() bool {
+	for _, ch := range n.Children {
+		if ch != 0 && ch != -1 {
+			return true
+		}
+	}
+	return false
 }

@@ -62,68 +62,63 @@ const (
 )
 
 type tree struct {
-	cache map[int]node
+	root  int
+	cache map[int]*node
 	file  *os.File
 }
 
 // GetNode reads node from file if there's no present in cache
-func (t tree) GetNode(id int) (node, error) {
+func (t tree) GetNode(id int) (*node, error) {
 	if n, ok := t.cache[id]; ok {
 		return n, nil
 	}
 	_, err := t.file.Seek(int64(id*NodeSizeInt()), io.SeekStart)
 	if err != nil {
-		return node{}, err
+		return nil, err
 	}
 
 	b := make([]byte, NodeSize())
 	_, err = t.file.Read(b)
 	if err != nil {
-		return node{}, err
+		return nil, err
 	}
 
 	n := NewNode()
 	if err := UnmarshalNode(b, &n); err != nil {
-		return node{}, err
+		return nil, err
 	}
-	return n, nil
+	return &n, nil
 }
 
-// Print prints whole tree
-func (t tree) Print(id int) error {
+type walkFnPostAction int
+
+const (
+	walkPostContinue = iota + 1
+	walkPostQuit
+)
+
+// walkFn performs some action on node that is being 'walked'
+type walkFn func(int, *node) (walkFnPostAction, error)
+
+// walk is a function that walks btree in-order and perform given function
+func (t tree) walk(id int, walkFn walkFn) error {
 	node, err := t.GetNode(id)
 	if err != nil {
 		return err
 	}
-	fmt.Println(node)
-	if !node.hasChildren() {
+	// TODO: refactor that, it'll go here for all the cases after e.g. node to insert is found
+	if action, err := walkFn(id, node); err != nil {
+		return err
+	} else if action == walkPostQuit {
 		return nil
 	}
-	for _, ch := range node.Children {
-		if ch != -1 && ch != 0 {
-			if err := t.Print(ch); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
 
-// Flush writes whole tree into file starting from root
-func (t tree) Flush(id int) error {
-	node, err := t.GetNode(id)
-	if err != nil {
-		return err
-	}
-	if err := t.flushNode(id, node); err != nil {
-		return err
-	}
 	if !node.hasChildren() {
 		return nil
 	}
 	for _, ch := range node.Children {
 		if ch != 0 {
-			if err := t.Flush(ch); err != nil {
+			if err := t.walk(ch, walkFn); err != nil {
 				return err
 			}
 		}
@@ -131,7 +126,22 @@ func (t tree) Flush(id int) error {
 	return nil
 }
 
-func (t tree) flushNode(id int, n node) error {
+// Print prints whole tree
+func (t tree) Print() error {
+	return t.walk(t.root, func(i int, n *node) (walkFnPostAction, error) {
+		fmt.Println(n)
+		return walkPostContinue, nil
+	})
+}
+
+// Flush writes whole tree into file starting from root
+func (t tree) Flush() error {
+	return t.walk(t.root, func(id int, node *node) (walkFnPostAction, error) {
+		return walkPostContinue, t.flushNode(id, node)
+	})
+}
+
+func (t tree) flushNode(id int, n *node) error {
 	_, err := t.file.Seek(int64(id*NodeSizeInt()), io.SeekStart)
 	if err != nil {
 		return err
@@ -146,6 +156,48 @@ func (t tree) flushNode(id int, n node) error {
 		return err
 	}
 	return nil
+}
+
+// Add adds row(cell) to the tree
+func (t tree) Add(r *Row) error {
+	node, err := t.findPlaceToInsert(t.root)
+	if err != nil {
+		return err
+	}
+	if node == nil {
+		// TODO: add another node here and link it to previous one
+		return errors.New("there's no place to insert")
+	}
+	node.addRow(r)
+	return nil
+}
+
+// findPlaceToInsert searches btree in order to find first place to insert new Row
+//
+// it's simple version that searches tree in-order and returns first node that will fit Row
+func (t tree) findPlaceToInsert(id int) (*node, error) {
+	node, err := t.GetNode(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if node.hasPlaceForRow() {
+		return node, nil
+	}
+
+	if !node.hasChildren() {
+		return nil, nil
+	}
+	for _, ch := range node.Children {
+		if ch != 0 {
+			if n, err := t.findPlaceToInsert(ch); err != nil {
+				return nil, err
+			} else if n != nil {
+				return n, nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 type node struct {
@@ -166,7 +218,7 @@ func NewNode() node {
 	}
 
 	for i := uint8(0); i < maxCellsCount; i++ {
-		n.Cells[i] = &Row{}
+		n.Cells[i] = nil
 	}
 	return n
 }
@@ -257,6 +309,26 @@ func (n node) String() string {
 func (n node) hasChildren() bool {
 	for _, ch := range n.Children {
 		if ch != 0 && ch != -1 {
+			return true
+		}
+	}
+	return false
+}
+
+// addRow adds row to node rows
+func (n *node) addRow(r *Row) {
+	for k, v := range n.Cells {
+		if v == nil {
+			n.Cells[k] = r
+			return
+		}
+	}
+}
+
+// hasPlaceForRow checks if node has place for another row
+func (n node) hasPlaceForRow() bool {
+	for _, c := range n.Cells {
+		if c == nil {
 			return true
 		}
 	}
